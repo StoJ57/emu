@@ -12,23 +12,21 @@ import 'package:audio_service/audio_service.dart';
 class AudioPlayerHandler extends BaseAudioHandler {
   void update() {
     if (PlaybackManager.currentSong() != null) {
-      mediaItem.add(MediaItem(
-          id: PlaybackManager.currentSong()!.url.toString(),
-          title: PlaybackManager.currentSong()!.name,
-          displayTitle: PlaybackManager.currentSong()!.name));
+      mediaItem.add(PlaybackManager.currentSong()!.toMediaItem());
+      List<MediaControl> controls = [MediaControl.skipToPrevious];
       if (PlaybackManager.isPlaying()) {
-        playbackState.add(playbackState.value.copyWith(
-          controls: [MediaControl.pause],
-          playing: true,
-          processingState: AudioProcessingState.ready,
-        ));
+        controls.add(MediaControl.pause);
       } else {
-        playbackState.add(playbackState.value.copyWith(
-          controls: [MediaControl.play],
-          playing: false,
-          processingState: AudioProcessingState.ready,
-        ));
+        controls.add(MediaControl.play);
       }
+      if (PlaybackManager.hasNext()) {
+        controls.add(MediaControl.skipToNext);
+      }
+      playbackState.add(playbackState.value.copyWith(
+        controls: controls,
+        playing: PlaybackManager.isPlaying(),
+        processingState: AudioProcessingState.ready,
+      ));
     } else {
       playbackState.add(playbackState.value.copyWith(
         processingState: AudioProcessingState.idle,
@@ -36,14 +34,27 @@ class AudioPlayerHandler extends BaseAudioHandler {
     }
   }
 
-  @override
-  Future<void> play() async {
-    print("play");
-    await PlaybackManager.resume();
+  void update_progress() {
+    playbackState.add(playbackState.value.copyWith());
   }
 
   @override
+  Future<void> play() async => await PlaybackManager.resume();
+
+  @override
   Future<void> pause() async => await PlaybackManager.pause();
+
+  @override
+  Future<void> skipToNext() async => await PlaybackManager.playNext();
+
+  @override
+  Future<void> skipToPrevious() async {
+    if (PlaybackManager.hasPrevious()) {
+      await PlaybackManager.playPrevious();
+    } else {
+      await PlaybackManager.seek(0);
+    }
+  }
 }
 
 late AudioPlayerHandler _audioHandler;
@@ -54,10 +65,10 @@ Future<void> main() async {
   _audioHandler = await AudioService.init(
     builder: () => AudioPlayerHandler(),
     config: const AudioServiceConfig(
-      androidNotificationChannelId: 'com.example.emu.channel.audio',
-      androidNotificationChannelName: 'Audio playback',
-      androidNotificationOngoing: true,
-    ),
+        androidNotificationChannelId: 'com.example.emu.channel.audio',
+        androidNotificationChannelName: 'Audio playback',
+        androidNotificationOngoing: true,
+        androidNotificationIcon: 'mipmap/ic_launcher'),
   );
   runApp(const MyApp());
 }
@@ -97,8 +108,9 @@ Future<void> _displayTextInputDialog(
 
 class Song {
   Uri url;
+  Uri? artUrl;
   String name;
-  Song(this.name, this.url);
+  Song(this.name, this.url, this.artUrl);
 
   Future<String?> downloaded() async {
     var path = (await AlbumManager.directory).toString();
@@ -112,7 +124,11 @@ class Song {
   }
 
   MediaItem toMediaItem() {
-    return MediaItem(id: url.toString(), title: name.toString());
+    return MediaItem(
+      id: url.toString(),
+      title: name.toString(),
+      artUri: artUrl,
+    );
   }
 }
 
@@ -128,13 +144,18 @@ class Album {
     var doc = loadYaml(text);
     List<Song> include = [];
     List<Song> exclude = [];
+    Uri? art;
+    if (doc['art'] != null) {
+      art = Uri.parse(doc['art']!);
+    }
+
     if (doc['include'] != null) {
       for (var n in doc['include']) {
         if (n is! YamlMap) {
           throw 'Invalid YAML';
         }
         for (var s in n.entries) {
-          include.add(Song(s.key, Uri.parse(s.value)));
+          include.add(Song(s.key, Uri.parse(s.value), art));
         }
       }
     }
@@ -289,6 +310,10 @@ class PlaybackManager {
 
   static bool hasNext() {
     return current! + 1 < queue.length;
+  }
+
+  static bool hasPrevious() {
+    return current! > 0;
   }
 }
 
@@ -602,10 +627,10 @@ class _SongBarState extends State<_SongBar> {
           Expanded(child: Text(PlaybackManager.currentSong()!.name)),
           IconButton(
               onPressed: () async {
-                if (PlaybackManager.current == 0) {
-                  await PlaybackManager.player.seek(Duration.zero);
-                } else {
+                if (PlaybackManager.hasPrevious()) {
                   await PlaybackManager.playPrevious();
+                } else {
+                  await PlaybackManager.seek(0);
                 }
                 setState(() {});
               },
