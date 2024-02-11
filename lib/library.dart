@@ -68,8 +68,11 @@ class LibraryState extends State<Library> {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                      builder: (context) => AlbumPage(AlbumManager.albums
-                          .indexOf(AlbumManager.library[index]))),
+                      builder: (context) => AlbumPage(
+                              AlbumManager.albums
+                                  .indexOf(AlbumManager.library[index]), () {
+                            setState(() {});
+                          })),
                 );
               },
             ));

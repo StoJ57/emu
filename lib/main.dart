@@ -127,7 +127,7 @@ class _MyHomePageState extends State<MyHomePage> {
             ),
           ],
         )),
-        body: _selectedIndex == 0 ? const Library() : ExplorePage(),
+        body: _selectedIndex == 0 ? const Library() : const ExplorePage(),
         bottomNavigationBar: const SongBar());
   }
 }

@@ -46,14 +46,29 @@ class AlbumManager {
     int errs = 0;
 
     for (var f in files.whereType<File>()) {
+      var url = Uri.decodeComponent(f.uri.pathSegments.last);
       try {
-        a.add(Album.fromText(await f.readAsString(), f.path));
+        a.add(Album.fromText(await f.readAsString(), Uri.parse(url)));
       } catch (e) {
-        print("Could not parse album: " + Uri.decodeComponent(f.path));
+        print("Could not parse album: $url");
         print(e);
         errs += 1;
       }
     }
+
+    for (var album in a) {
+      for (var i = 0; i < album.include.length; i++) {
+        if (album.include[i] is AlbumSlot) {
+          for (var otherAlbum in a) {
+            if (otherAlbum.path == (album.include[i] as AlbumSlot).url) {
+              album.include[i] = otherAlbum;
+              break;
+            }
+          }
+        }
+      }
+    }
+
     albums = a;
     await readLibrary();
 
@@ -68,7 +83,7 @@ class AlbumManager {
     } else {
       for (var line in await file.readAsLines()) {
         for (var a in albums) {
-          if (a.path == line) {
+          if (a.path == Uri.parse(line)) {
             library.add(a);
           }
         }
@@ -113,7 +128,21 @@ class AlbumManager {
   }
 }
 
-class Song {
+abstract class Playable {
+  List<Song> getSongs();
+}
+
+class AlbumSlot extends Playable {
+  Uri url;
+  AlbumSlot(this.url);
+
+  @override
+  List<Song> getSongs() {
+    throw UnimplementedError();
+  }
+}
+
+class Song extends Playable {
   Uri url;
   Uri? artUrl;
   String name;
@@ -134,6 +163,11 @@ class Song {
     } else {
       return null;
     }
+  }
+
+  @override
+  List<Song> getSongs() {
+    return [this];
   }
 
   Media getMedia() {
@@ -182,21 +216,22 @@ class Song {
   }
 }
 
-class Album {
+class Album extends Playable {
   String name;
-  String path;
-  List<Song> include;
+  Uri path; // Should be
+  bool browseable;
+  List<Playable> include;
   List<Song> exclude;
 
   String? artist;
   String? performer;
   String? licence;
 
-  Album(this.name, this.include, this.exclude, this.path);
+  Album(this.name, this.include, this.exclude, this.path, this.browseable);
 
-  static Album fromText(String text, String path) {
+  static Album fromText(String text, Uri path) {
     var doc = loadYaml(text);
-    List<Song> include = [];
+    List<Playable> include = [];
     List<Song> exclude = [];
     Uri? art;
 
@@ -217,27 +252,43 @@ class Album {
       art = Uri.parse(doc['art']!);
     }
 
+    bool browseable = true;
+    if (doc['browseable'] != null) {
+      browseable = doc['browseable']!;
+    }
+
     if (doc['include'] != null) {
       for (var n in doc['include']) {
         if (n is! YamlMap) {
           throw 'Invalid YAML';
         }
         for (var s in n.entries) {
-          include.add(
-              Song(s.key, Uri.parse(s.value), art, artist, performer, licence));
+          var uri = Uri.parse(s.value);
+          if (uri.toString().endsWith('.yaml')) {
+            include.add(AlbumSlot(uri));
+          } else {
+            include.add(Song(s.key, uri, art, artist, performer, licence));
+          }
         }
       }
     }
     if (doc['exclude'] != null) {
       // TODO
     }
-
-    var album = Album(doc['name'], include, exclude, path);
+    var album = Album(doc['name'], include, exclude, path, browseable);
     album.artist = artist;
     album.performer = performer;
     album.licence = licence;
 
     return album;
+  }
+
+  bool isPlaying() {
+    if (PlaybackManager.currentSong() != null) {
+      return include.contains(PlaybackManager.currentSong()!);
+    } else {
+      return false;
+    }
   }
 
   String getArtist() {
@@ -269,8 +320,13 @@ class Album {
     return name.toUpperCase().contains(search.toUpperCase());
   }
 
+  @override
   List<Song> getSongs() {
-    return include;
+    List<Song> songs = [];
+    for (var p in include) {
+      songs.addAll(p.getSongs());
+    }
+    return songs;
   }
 }
 

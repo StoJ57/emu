@@ -14,7 +14,7 @@ class ExplorePageState extends State<ExplorePage> {
     List<Widget> results = [];
     var i = 0;
     for (var album in AlbumManager.albums) {
-      bool matches = search.isEmpty;
+      bool matches = search.isEmpty && album.browseable;
 
       if (!matches) {
         for (String term in search) {
@@ -35,7 +35,9 @@ class ExplorePageState extends State<ExplorePage> {
             Navigator.push(
               context,
               MaterialPageRoute(builder: (context) {
-                return AlbumPage(navigateIndex);
+                return AlbumPage(navigateIndex, () {
+                  setState(() {});
+                });
               }),
             );
           },

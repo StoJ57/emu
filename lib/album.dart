@@ -3,15 +3,26 @@ import 'package:flutter/material.dart';
 import 'audio.dart';
 import 'song.dart';
 
-class AlbumPage extends StatelessWidget {
+class AlbumPage extends StatefulWidget {
   final int albumId;
-  const AlbumPage(this.albumId, {super.key});
+  final Function? onUpdate;
+
+  const AlbumPage(this.albumId, this.onUpdate, {super.key});
+
+  @override
+  State<AlbumPage> createState() => _AlbumPageState();
+}
+
+class _AlbumPageState extends State<AlbumPage> {
+  void updated() {
+    if (widget.onUpdate != null) {
+      widget.onUpdate!();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    var album = AlbumManager.albums[albumId];
-
-    var songs = album.getSongs();
+    var album = AlbumManager.albums[widget.albumId];
 
     TextButton libraryButton;
     if (AlbumManager.library.contains(album)) {
@@ -33,35 +44,91 @@ class AlbumPage extends StatelessWidget {
     List<Widget> listTiles = [
       TextButton(
           onPressed: () {
-            PlaybackManager.playAlbum(album, 0);
+            setState(() {
+              PlaybackManager.playAlbum(album, 0);
+            });
+            updated();
           },
           child: const Text('Play All')),
       TextButton(
           onPressed: () {
-            PlaybackManager.playAlbumShuffled(album);
+            setState(() {
+              PlaybackManager.playAlbumShuffled(album);
+            });
+            updated();
           },
           child: const Text('Shuffle Play')),
       libraryButton
     ];
 
     var i = 0;
-    for (var song in songs) {
+    for (var playable in album.include) {
       int iLocal = i;
-
-      listTiles.add(ListTile(
-        title: Text(song.name),
-        subtitle: Text(song.getSubtitle()),
-        onTap: () {
-          PlaybackManager.playAlbum(AlbumManager.albums[albumId], iLocal);
-        },
-      ));
-      i += 1;
+      if (playable is Album) {
+        Album subAlbum = playable;
+        listTiles.add(ListTile(
+          leading: subAlbum.isPlaying()
+              ? const Icon(Icons.equalizer)
+              : InkWell(
+                  child: const Icon(Icons.playlist_play),
+                  onTap: () {
+                    setState(() {
+                      PlaybackManager.playAlbum(album, iLocal);
+                    });
+                    updated();
+                  }),
+          selected: subAlbum.isPlaying(),
+          title: Text(subAlbum.name),
+          subtitle: Text(subAlbum.getSubtitle()),
+          onTap: () {
+            var subAlbumId = AlbumManager.albums.indexOf(subAlbum);
+            if (subAlbumId == -1) {
+              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                  content: Text('Please wait for albums to load')));
+            }
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) {
+                return AlbumPage(subAlbumId, () {
+                  setState(() {});
+                });
+              }),
+            );
+          },
+        ));
+        i += subAlbum.getSongs().length;
+      } else if (playable is Song) {
+        Song song = playable;
+        var playing = false;
+        if (PlaybackManager.currentSong() != null &&
+            PlaybackManager.currentSong()! == song) {
+          playing = true;
+        }
+        listTiles.add(ListTile(
+          leading: playing
+              ? const Icon(Icons.equalizer)
+              : const Icon(Icons.play_arrow),
+          title: Text(song.name),
+          selected: playing,
+          subtitle: Text(song.getSubtitle()),
+          onTap: () {
+            setState(() {
+              if (playing) {
+              } else {
+                PlaybackManager.playAlbum(album, iLocal);
+              }
+            });
+            updated();
+          },
+        ));
+        i += 1;
+      }
     }
 
     return Scaffold(
         appBar: AppBar(
             backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-            title: Text(AlbumManager.albums[albumId].name),
+            title: Text(AlbumManager.albums[widget.albumId].name),
             leading: IconButton(
               icon: const Icon(Icons.arrow_back),
               onPressed: () {
