@@ -1,6 +1,6 @@
 # Emu
 
-A music player for free music built with Flutter
+A free and open source music player for free (creative commons and public domain) music built with Flutter
 
 ## Internal directory structure
 
