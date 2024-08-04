@@ -22,6 +22,12 @@ Future<void> main() async {
         androidNotificationOngoing: true,
         androidNotificationIcon: 'mipmap/ic_launcher'),
   );
+  var a = AppLifecycleListener(onExitRequested: () async {
+    await PlaybackManager.stop();
+    PlaybackManager.player.dispose();
+    DownloadManager.dispose(); // Safe download cancellation for app shutdown
+    return AppExitResponse.exit;
+  });
   runApp(const MyApp());
 }
 
@@ -55,19 +61,10 @@ class _MyHomePageState extends State<MyHomePage> {
 
   static const List<String> drawerNames = ['Library', 'Explore'];
 
-  late final AppLifecycleListener _listener;
-
   void _onItemTapped(int index) {
     setState(() {
       _selectedIndex = index;
     });
-  }
-
-  @override
-  void dispose() {
-    _listener.dispose();
-    PlaybackManager.player.dispose();
-    super.dispose();
   }
 
   @override
@@ -84,13 +81,6 @@ class _MyHomePageState extends State<MyHomePage> {
                   const SnackBar(content: Text('Error importing 1 album')))
             }
         });
-
-    _listener = AppLifecycleListener(
-      onExitRequested: () async {
-        await PlaybackManager.stop();
-        return AppExitResponse.exit;
-      },
-    );
 
     super.initState();
     PlaybackManager.init();

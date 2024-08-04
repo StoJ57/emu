@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import 'audio.dart';
@@ -13,7 +15,29 @@ class AlbumPage extends StatefulWidget {
   State<AlbumPage> createState() => _AlbumPageState();
 }
 
+enum DownloadState {
+  unknown,
+  undownloaded,
+  downloading,
+  partial,
+  deleting,
+  downloaded;
+
+  bool needsPoll() {
+    switch (this) {
+      case DownloadState.unknown:
+      case DownloadState.downloading:
+        return true;
+      case _:
+        return false;
+    }
+  }
+}
+
 class _AlbumPageState extends State<AlbumPage> {
+  DownloadState downloadState = DownloadState.unknown;
+  int downloadedNum = 0;
+
   void updated() {
     if (widget.onUpdate != null) {
       widget.onUpdate!();
@@ -24,16 +48,16 @@ class _AlbumPageState extends State<AlbumPage> {
   Widget build(BuildContext context) {
     var album = AlbumManager.albums[widget.albumId];
 
-    TextButton libraryButton;
+    ElevatedButton libraryButton;
     if (AlbumManager.library.contains(album)) {
-      libraryButton = TextButton(
+      libraryButton = ElevatedButton(
           onPressed: () {
             AlbumManager.library.remove(album);
             AlbumManager.writeLibrary();
           },
           child: const Text('Remove from library'));
     } else {
-      libraryButton = TextButton(
+      libraryButton = ElevatedButton(
           onPressed: () {
             AlbumManager.library.add(album);
             AlbumManager.writeLibrary();
@@ -41,24 +65,126 @@ class _AlbumPageState extends State<AlbumPage> {
           child: const Text('Add to library'));
     }
 
+    // Downloads
+    Widget downloadSection;
+
+    if (album.isDownloading()) {
+      downloadState = DownloadState.downloading;
+      print('downloading');
+      print(DownloadManager.downloadQueue);
+    }
+
+    switch (downloadState) {
+      case DownloadState.unknown:
+        album.downloaded().then((numDownloaded) => {
+              setState(() {
+                if (numDownloaded == album.getSongs().length) {
+                  downloadState = DownloadState.downloaded;
+                } else if (numDownloaded == 0) {
+                  downloadState = DownloadState.undownloaded;
+                } else {
+                  downloadState = DownloadState.partial;
+                  downloadedNum = numDownloaded;
+                }
+              })
+            });
+        downloadSection = const SizedBox.shrink();
+      case DownloadState.downloaded:
+        downloadSection = ElevatedButton(
+            onPressed: () {
+              setState(() {
+                downloadState = DownloadState.deleting;
+                album.undownload().then((_) {
+                  setState(() {
+                    downloadState = DownloadState.undownloaded;
+                  });
+                });
+              });
+            },
+            child: const Text('Undownload'));
+      case DownloadState.undownloaded:
+        downloadSection = ElevatedButton(
+            onPressed: () {
+              setState(() {
+                album.download();
+                downloadState = DownloadState.downloading;
+              });
+            },
+            child: const Text('Download'));
+      case DownloadState.partial:
+        downloadSection = Wrap(
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 8.0,
+            children: [
+              Text(
+                  '$downloadedNum / ${album.getSongs().length} songs downloaded'),
+              ElevatedButton(
+                  onPressed: () {
+                    setState(() {
+                      downloadState = DownloadState.downloading;
+                      album.download();
+                    });
+                  },
+                  child: const Text('Download all')),
+              ElevatedButton(
+                  onPressed: () {
+                    setState(() {
+                      downloadState = DownloadState.deleting;
+                      album.undownload().then((_) {
+                        setState(() {
+                          downloadState = DownloadState.undownloaded;
+                        });
+                      });
+                    });
+                  },
+                  child: const Text('Undownload all'))
+            ]);
+      case DownloadState.downloading:
+        downloadSection =
+            Text('Downloading ($downloadedNum / ${album.getSongs().length})');
+        Timer(const Duration(seconds: 1), () {
+          album.downloaded().then((numDownloaded) => {
+                if (mounted)
+                  {
+                    setState(() {
+                      downloadedNum = numDownloaded;
+                      if (downloadedNum == album.getSongs().length) {
+                        downloadState = DownloadState.downloaded;
+                      }
+                    })
+                  }
+              });
+        });
+      case DownloadState.deleting:
+        downloadSection = const Text('');
+    }
+
     List<Widget> listTiles = [
-      TextButton(
-          onPressed: () {
-            setState(() {
-              PlaybackManager.playAlbum(album, 0);
-            });
-            updated();
-          },
-          child: const Text('Play All')),
-      TextButton(
-          onPressed: () {
-            setState(() {
-              PlaybackManager.playAlbumShuffled(album);
-            });
-            updated();
-          },
-          child: const Text('Shuffle Play')),
-      libraryButton
+      Padding(
+          padding: const EdgeInsets.all(10.0),
+          child: Wrap(
+            spacing: 10,
+            children: [
+              ElevatedButton(
+                  onPressed: () {
+                    setState(() {
+                      PlaybackManager.playAlbum(album, 0);
+                    });
+                    updated();
+                  },
+                  child: const Text('Play All')),
+              ElevatedButton(
+                  onPressed: () {
+                    setState(() {
+                      PlaybackManager.playAlbumShuffled(album);
+                    });
+                    updated();
+                  },
+                  child: const Text('Shuffle Play')),
+              libraryButton,
+            ],
+          )),
+      Padding(padding: const EdgeInsets.all(10.0), child: downloadSection)
     ];
 
     var i = 0;
@@ -135,9 +261,7 @@ class _AlbumPageState extends State<AlbumPage> {
                 Navigator.pop(context);
               },
             )),
-        body: ListView(
-            children: ListTile.divideTiles(tiles: listTiles, context: context)
-                .toList()),
+        body: ListView(children: listTiles),
         bottomNavigationBar: const SongBar());
   }
 }

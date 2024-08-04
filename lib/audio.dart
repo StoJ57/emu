@@ -1,10 +1,65 @@
+import 'dart:async';
+
 import 'package:audio_service/audio_service.dart';
+import 'package:media_kit/ffi/ffi.dart';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:http/http.dart' as http;
 import 'package:yaml/yaml.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:audio_session/audio_session.dart';
+import 'package:dio/dio.dart';
+
+const downloadRetrySeconds = 5;
+
+final dio = Dio();
+
+class DownloadManager {
+  static bool disposed = false;
+  static bool downloading = false;
+  static List<Song> downloadQueue = [];
+  static CancelToken downloadCancelToken = CancelToken();
+
+  static void queue(Song song) {
+    print(song.name);
+    if (!downloadQueue.contains(song)) {
+      downloadQueue.add(song);
+    }
+    if (!downloading) {
+      downloadNext();
+    }
+  }
+
+  static void dispose() {
+    disposed = true;
+    downloadCancelToken.cancel();
+  }
+
+  static void downloadNext() async {
+    downloading = true;
+    Song song = downloadQueue[0];
+    String path = await song.downloadPath();
+    try {
+      await dio.download(song.url.toString(), path,
+          cancelToken: downloadCancelToken);
+      downloadQueue.removeAt(0);
+    } on DioException catch (e) {
+      await File.fromUri(Uri.file(path)).delete();
+      if (disposed) {
+        return;
+      } else {
+        print('Download failed');
+        await Future.delayed(const Duration(seconds: downloadRetrySeconds));
+      }
+    }
+
+    if (downloadQueue.isEmpty) {
+      downloading = false;
+    } else {
+      downloadNext();
+    }
+  }
+}
 
 class AlbumManager {
   static Future<String> directory = (() async {
@@ -156,13 +211,28 @@ class Song extends Playable {
 
   Future<String?> downloaded() async {
     var path = (await AlbumManager.directory).toString();
-    path += '/songs';
+    path += '/songs/';
     path += Uri.encodeComponent(url.toString());
-    if (await File.fromUri(Uri.parse(path)).exists()) {
+    if (await File.fromUri(Uri.file(path)).exists()) {
       return path;
     } else {
       return null;
     }
+  }
+
+  Future<String> downloadPath() async {
+    var path = (await AlbumManager.directory).toString();
+    path += '/songs/';
+    path += Uri.encodeComponent(url.toString());
+    return path;
+  }
+
+  Future<void> download() async {
+    DownloadManager.queue(this);
+  }
+
+  Future<void> undownload() async {
+    await File.fromUri(Uri.file(await downloadPath())).delete();
   }
 
   @override
@@ -170,8 +240,13 @@ class Song extends Playable {
     return [this];
   }
 
-  Media getMedia() {
-    return Media(url.toString());
+  Future<Media> getMedia() async {
+    switch (await downloaded()) {
+      case null:
+        return Media(url.toString());
+      case String s:
+        return Media(s);
+    }
   }
 
   String getArtist() {
@@ -291,6 +366,15 @@ class Album extends Playable {
     }
   }
 
+  bool isDownloading() {
+    for (Song song in getSongs()) {
+      if (DownloadManager.downloadQueue.contains(song)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   String getArtist() {
     if (artist != null) {
       if (performer != null && performer != artist) {
@@ -327,6 +411,32 @@ class Album extends Playable {
       songs.addAll(p.getSongs());
     }
     return songs;
+  }
+
+  void download() async {
+    for (Song s in getSongs()) {
+      if (await s.downloaded() == null) {
+        s.download();
+      }
+    }
+  }
+
+  Future<void> undownload() async {
+    for (Song s in getSongs()) {
+      if (await s.downloaded() != null) {
+        await s.undownload();
+      }
+    }
+  }
+
+  Future<int> downloaded() async {
+    int numDownloaded = 0;
+    for (Song s in getSongs()) {
+      if (await s.downloaded() != null) {
+        numDownloaded += 1;
+      }
+    }
+    return numDownloaded;
   }
 }
 
@@ -504,11 +614,11 @@ class PlaybackManager {
     if (nextLoaded) {
       nextLoaded = false;
     } else {
-      await player.open(Playlist([queue[current!].getMedia()]));
+      await player.open(Playlist([await queue[current!].getMedia()]));
     }
 
     if (queue.length > current! + 1) {
-      await player.add(queue[current! + 1].getMedia());
+      await player.add(await queue[current! + 1].getMedia());
       nextLoaded = true;
     } else {
       nextLoaded = false;
