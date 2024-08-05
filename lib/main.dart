@@ -22,7 +22,7 @@ Future<void> main() async {
         androidNotificationOngoing: true,
         androidNotificationIcon: 'mipmap/ic_launcher'),
   );
-  var a = AppLifecycleListener(onExitRequested: () async {
+  AppLifecycleListener(onExitRequested: () async {
     await PlaybackManager.stop();
     PlaybackManager.player.dispose();
     DownloadManager.dispose(); // Safe download cancellation for app shutdown

@@ -52,15 +52,19 @@ class _AlbumPageState extends State<AlbumPage> {
     if (AlbumManager.library.contains(album)) {
       libraryButton = ElevatedButton(
           onPressed: () {
-            AlbumManager.library.remove(album);
-            AlbumManager.writeLibrary();
+            setState(() {
+              AlbumManager.library.remove(album);
+              AlbumManager.writeLibrary();
+            });
           },
           child: const Text('Remove from library'));
     } else {
       libraryButton = ElevatedButton(
           onPressed: () {
-            AlbumManager.library.add(album);
-            AlbumManager.writeLibrary();
+            setState(() {
+              AlbumManager.library.add(album);
+              AlbumManager.writeLibrary();
+            });
           },
           child: const Text('Add to library'));
     }
@@ -70,8 +74,6 @@ class _AlbumPageState extends State<AlbumPage> {
 
     if (album.isDownloading()) {
       downloadState = DownloadState.downloading;
-      print('downloading');
-      print(DownloadManager.downloadQueue);
     }
 
     switch (downloadState) {
@@ -140,8 +142,10 @@ class _AlbumPageState extends State<AlbumPage> {
                   child: const Text('Undownload all'))
             ]);
       case DownloadState.downloading:
-        downloadSection =
-            Text('Downloading ($downloadedNum / ${album.getSongs().length})');
+        downloadSection = ElevatedButton(
+            onPressed: null,
+            child: Text(
+                'Downloading ($downloadedNum / ${album.getSongs().length})'));
         Timer(const Duration(seconds: 1), () {
           album.downloaded().then((numDownloaded) => {
                 if (mounted)
@@ -156,35 +160,41 @@ class _AlbumPageState extends State<AlbumPage> {
               });
         });
       case DownloadState.deleting:
-        downloadSection = const Text('');
+        downloadSection =
+            const ElevatedButton(onPressed: null, child: Text('deleting...'));
     }
 
     List<Widget> listTiles = [
       Padding(
           padding: const EdgeInsets.all(10.0),
-          child: Wrap(
-            spacing: 10,
-            children: [
-              ElevatedButton(
-                  onPressed: () {
-                    setState(() {
-                      PlaybackManager.playAlbum(album, 0);
-                    });
-                    updated();
-                  },
-                  child: const Text('Play All')),
-              ElevatedButton(
-                  onPressed: () {
-                    setState(() {
-                      PlaybackManager.playAlbumShuffled(album);
-                    });
-                    updated();
-                  },
-                  child: const Text('Shuffle Play')),
-              libraryButton,
-            ],
-          )),
-      Padding(padding: const EdgeInsets.all(10.0), child: downloadSection)
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                ElevatedButton.icon(
+                    onPressed: () {
+                      setState(() {
+                        PlaybackManager.playAlbum(album, 0);
+                      });
+                      updated();
+                    },
+                    icon: const Icon(Icons.play_circle),
+                    label: const Text('Play')),
+                ElevatedButton.icon(
+                    onPressed: () {
+                      setState(() {
+                        PlaybackManager.playAlbumShuffled(album);
+                      });
+                      updated();
+                    },
+                    icon: const Icon(Icons.shuffle),
+                    label: const Text('Shuffle play')),
+              ],
+            ),
+            libraryButton,
+            downloadSection,
+          ])),
     ];
 
     var i = 0;

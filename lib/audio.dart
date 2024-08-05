@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:audio_service/audio_service.dart';
-import 'package:media_kit/ffi/ffi.dart';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:http/http.dart' as http;
@@ -22,7 +21,6 @@ class DownloadManager {
   static CancelToken downloadCancelToken = CancelToken();
 
   static void queue(Song song) {
-    print(song.name);
     if (!downloadQueue.contains(song)) {
       downloadQueue.add(song);
     }
@@ -44,7 +42,7 @@ class DownloadManager {
       await dio.download(song.url.toString(), path,
           cancelToken: downloadCancelToken);
       downloadQueue.removeAt(0);
-    } on DioException catch (e) {
+    } on DioException catch (_) {
       await File.fromUri(Uri.file(path)).delete();
       if (disposed) {
         return;
