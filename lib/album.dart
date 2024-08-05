@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:awesome_notifications/awesome_notifications.dart';
 import 'package:flutter/material.dart';
 
 import 'audio.dart';
@@ -41,6 +42,39 @@ class _AlbumPageState extends State<AlbumPage> {
   void updated() {
     if (widget.onUpdate != null) {
       widget.onUpdate!();
+    }
+  }
+
+  void askNotifPermission() async {
+    bool allowed = await AwesomeNotifications().isNotificationAllowed();
+
+    if (!allowed) {
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (BuildContext context) {
+          return AlertDialog(
+            title: const Text('Notification permissions'),
+            content: const SingleChildScrollView(
+              child: ListBody(
+                children: <Widget>[
+                  Text('Emu needs permission to display download progress'),
+                ],
+              ),
+            ),
+            actions: <Widget>[
+              TextButton(
+                child: const Text('Ok'),
+                onPressed: () {
+                  Navigator.of(context).pop();
+                },
+              ),
+            ],
+          );
+        },
+      );
+      bool allowed =
+          await AwesomeNotifications().requestPermissionToSendNotifications();
     }
   }
 
@@ -108,6 +142,7 @@ class _AlbumPageState extends State<AlbumPage> {
         downloadSection = ElevatedButton(
             onPressed: () {
               setState(() {
+                askNotifPermission();
                 album.download();
                 downloadState = DownloadState.downloading;
               });
@@ -123,6 +158,7 @@ class _AlbumPageState extends State<AlbumPage> {
               ElevatedButton(
                   onPressed: () {
                     setState(() {
+                      askNotifPermission();
                       downloadState = DownloadState.downloading;
                       album.download();
                     });
@@ -135,6 +171,7 @@ class _AlbumPageState extends State<AlbumPage> {
                       album.undownload().then((_) {
                         setState(() {
                           downloadState = DownloadState.undownloaded;
+                          downloadedNum = 0;
                         });
                       });
                     });

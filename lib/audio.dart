@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:audio_service/audio_service.dart';
+import 'package:awesome_notifications/awesome_notifications.dart';
+import 'package:flutter_background_service/flutter_background_service.dart';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:http/http.dart' as http;
@@ -10,13 +12,41 @@ import 'package:audio_session/audio_session.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_foreground_service/flutter_foreground_service.dart';
 
-const downloadRetrySeconds = 5;
+const downloadRetrySeconds = 10;
 
 final dio = Dio();
+
+void updateDownloadNotification(int id, int completed, int total) {
+  if (completed == total) {
+    AwesomeNotifications().createNotification(
+        content: NotificationContent(
+            id: id,
+            channelKey: 'download_channel',
+            title: 'Download finished',
+            body: '$total tracks successfully downloaded',
+            category: NotificationCategory.Progress,
+            notificationLayout: NotificationLayout.Default,
+            progress: 100.0,
+            locked: true));
+  } else {
+    double progress = 100.0 * completed / total;
+    AwesomeNotifications().createNotification(
+        content: NotificationContent(
+            id: id,
+            channelKey: 'download_channel',
+            title: 'Downloading tracks ($completed / $total)',
+            body: '',
+            category: NotificationCategory.Progress,
+            notificationLayout: NotificationLayout.ProgressBar,
+            progress: progress,
+            locked: true));
+  }
+}
 
 class DownloadManager {
   static bool disposed = false;
   static bool downloading = false;
+  static int completed = 0;
   static List<Song> downloadQueue = [];
   static CancelToken downloadCancelToken = CancelToken();
 
@@ -36,14 +66,25 @@ class DownloadManager {
 
   static void downloadNext() async {
     downloading = true;
+    updateDownloadNotification(0, completed, completed + downloadQueue.length);
     Song song = downloadQueue[0];
     String path = await song.downloadPath();
     try {
-      await dio.download(song.url.toString(), path,
-          cancelToken: downloadCancelToken);
+      await dio.download(
+        song.url.toString(),
+        path,
+        cancelToken: downloadCancelToken,
+        onReceiveProgress: (count, total) {},
+      );
       downloadQueue.removeAt(0);
+      completed += 1;
     } on DioException catch (_) {
-      await File.fromUri(Uri.file(path)).delete();
+      try {
+        await File.fromUri(Uri.file(path)).delete();
+      } on PathNotFoundException {
+        _;
+      }
+
       if (disposed) {
         return;
       } else {
@@ -53,8 +94,15 @@ class DownloadManager {
     }
 
     if (downloadQueue.isEmpty) {
+      updateDownloadNotification(0, completed, completed);
       downloading = false;
+      if (Platform.isAndroid) {
+        ForegroundService().stop();
+      }
+      completed = 0;
     } else {
+      updateDownloadNotification(
+          0, completed, completed + downloadQueue.length);
       downloadNext();
     }
   }

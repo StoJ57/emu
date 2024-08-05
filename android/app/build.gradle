@@ -40,13 +40,15 @@ android {
         main.java.srcDirs += 'src/main/kotlin'
     }
 
+    compileSdkVersion 34 // required by awesome_notifications
+
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId "com.example.emu"
         // You can update the following values to match your application needs.
         // For more information, see: https://docs.flutter.dev/deployment/android#reviewing-the-gradle-build-configuration.
         minSdkVersion 23 // required by flutter_foreground_service
-        targetSdkVersion flutter.targetSdkVersion
+        targetSdkVersion 34 // required by awesome_notifications
         versionCode flutterVersionCode.toInteger()
         versionName flutterVersionName
     }

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:ui';
 
+import 'package:awesome_notifications/awesome_notifications.dart';
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:audio_service/audio_service.dart';
@@ -26,12 +27,36 @@ Future<void> main() async {
     await PlaybackManager.stop();
     PlaybackManager.player.dispose();
     DownloadManager.dispose(); // Safe download cancellation for app shutdown
+    print('Exiting');
     return AppExitResponse.exit;
   }, onPause: () {
     PlaybackManager.background = true;
   }, onResume: () {
     PlaybackManager.background = false;
   });
+  AwesomeNotifications().initialize(
+      null,
+      [
+        NotificationChannel(
+          channelGroupKey: 'download_channel_group',
+          channelKey: 'download_channel',
+          channelName: 'Download notifications',
+          channelDescription: 'Displays audio download progress',
+          defaultColor: Color(0xFF9D50DD),
+          ledColor: Colors.white,
+          importance: NotificationImportance.Low,
+          playSound: false,
+          enableVibration: false,
+          locked: true,
+        )
+      ],
+      // Channel groups are only visual and are not required
+      channelGroups: [
+        NotificationChannelGroup(
+            channelGroupKey: 'download_channel_group',
+            channelGroupName: 'Basic group')
+      ],
+      debug: true);
   runApp(const MyApp());
 }
 
