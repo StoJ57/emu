@@ -9,6 +9,7 @@ import 'package:yaml/yaml.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:audio_session/audio_session.dart';
 import 'package:dio/dio.dart';
+import 'package:flutter_foreground_service/flutter_foreground_service.dart';
 
 const downloadRetrySeconds = 5;
 
@@ -502,6 +503,8 @@ class PlaybackManager {
   static List<Song> queue = [];
   static int? current;
 
+  static bool background = false;
+
   static Player player = Player();
   static late AudioSession session;
 
@@ -545,6 +548,25 @@ class PlaybackManager {
         }
       }
     });
+  }
+
+  static playing() async {
+    if (await session.setActive(true,
+        androidAudioAttributes: const AndroidAudioAttributes(
+            contentType: AndroidAudioContentType.music,
+            usage: AndroidAudioUsage.media))) {
+    } else {
+      print("Could not set audio active");
+    }
+    if (Platform.isAndroid) {
+      ForegroundService().start();
+    }
+  }
+
+  static notPlaying() {
+    if (Platform.isAndroid) {
+      ForegroundService().stop();
+    }
   }
 
   static Song? currentSong() {
@@ -600,16 +622,11 @@ class PlaybackManager {
   static Future<void> stop() async {
     await player.stop();
     await session.setActive(false);
+    notPlaying();
   }
 
   static Future<void> play() async {
-    if (await session.setActive(true,
-        androidAudioAttributes: const AndroidAudioAttributes(
-            contentType: AndroidAudioContentType.music,
-            usage: AndroidAudioUsage.media))) {
-    } else {
-      print("Could not set audio active");
-    }
+    playing();
 
     if (nextLoaded) {
       nextLoaded = false;
@@ -642,16 +659,16 @@ class PlaybackManager {
   }
 
   static Future<void> resume() async {
-    if (await session.setActive(true)) {
-      await player.play();
-    } else {
-      print("Could not set audio active");
-    }
+    await player.setVolume(100.0); // Attempt to reduce abrupt pause popping
+    await player.play();
+    playing();
   }
 
   static Future<void> pause() async {
+    await player.setVolume(0.0);
     await player.pause();
     await session.setActive(false);
+    notPlaying();
   }
 
   static bool hasNext() {

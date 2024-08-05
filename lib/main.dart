@@ -27,6 +27,10 @@ Future<void> main() async {
     PlaybackManager.player.dispose();
     DownloadManager.dispose(); // Safe download cancellation for app shutdown
     return AppExitResponse.exit;
+  }, onPause: () {
+    PlaybackManager.background = true;
+  }, onResume: () {
+    PlaybackManager.background = false;
   });
   runApp(const MyApp());
 }
